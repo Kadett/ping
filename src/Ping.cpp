@@ -4,6 +4,7 @@
 #include "../inc/colormod.h"
 #include <algorithm>
 #include <arpa/inet.h>
+#include <sstream>
 
 
 Ping::Ping(std::vector<std::vector<std::string>> vec) : _vec_input(std::move(vec)) {}
@@ -45,13 +46,14 @@ void Ping::run() {
 }
 
 void Ping::print() {
-    std::sort(std::begin(_vec_result), std::end(_vec_result), [](const std::vector<std::string>& a, const std::vector<std::string>& b){
+    std::sort(std::begin(_vec_result), std::end(_vec_result), [&](const std::vector<std::string>& a, const std::vector<std::string>& b){
         in_addr addr1{};
         in_addr addr2{};
         inet_aton(a[1].c_str(), &addr1);
         inet_aton(b[1].c_str(), &addr2);
 
-        return addr1.s_addr < addr2.s_addr;
+
+        return convert_Ip_to_Int(a[1]) < convert_Ip_to_Int(b[1]);
     });
 
     for (auto &i: _vec_result) {
@@ -62,4 +64,14 @@ void Ping::print() {
         if(i.at(2) == "NOT") continue;
         std::cout << i.at(0) << " - " << i.at(1) << " - " << (i.at(2) == "OK" ? Color::GREEN : Color::RED)  << i.at(2) << Color::DEF <<  std::endl;
     }*/
+}
+
+unsigned int Ping::convert_Ip_to_Int(const std::string& s) {
+    std::string s_res;
+    std::istringstream ss{s};
+    std::stringstream ss1;
+    while (std::getline(ss, s_res, '.')){
+        ss1 << s_res;
+    }
+    return std::stoi(ss1.str());
 }

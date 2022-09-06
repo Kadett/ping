@@ -21,7 +21,8 @@ private:
     std::vector<std::vector<std::string>> _vec_result;
 
 
-public:
+private:
 
     std::vector<std::string> ping(std::vector<std::string>& v);
+    unsigned int convert_Ip_to_Int(const std::string& s);
 };
