@@ -5,22 +5,19 @@
 #include "../inc/Parser.h"
 
 
-std::vector<std::vector<std::string>> Parser::getList() {
+std::vector<Host> Parser::getHosts() {
     std::ifstream f("../ip.ini");
-    std::vector<std::vector<std::string>> vector_result{};
-    std::vector<std::string> vec{};
+    std::vector<Host> vector_hosts{};
     std::string str{};
     while(f){
-        vec.clear();
         std::getline(f, str);
         if (str.empty()) continue;
+        if (str[0] == '#') continue;
         auto iter = std::find(str.begin(), str.end(), ':');
         std::string a(str.begin(), iter);
         std::string b(iter+1, (str.end() - 1));
-        vec.push_back(a);
-        vec.push_back(b);
-        vector_result.push_back(vec);
+        vector_hosts.push_back(*new Host(a, b));
     }
     f.close();
-    return vector_result;
+    return vector_hosts;
 }

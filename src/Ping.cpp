@@ -3,75 +3,198 @@
 #include "../inc/Ping.h"
 #include "../inc/colormod.h"
 #include <algorithm>
-#include <arpa/inet.h>
-#include <sstream>
 
 
-Ping::Ping(std::vector<std::vector<std::string>> vec) : _vec_input(std::move(vec)) {}
 
-std::vector<std::string> Ping::ping(std::vector<std::string> &v) {
-    std::string s{"ping -c1 -s1 " + v.at(1) + " > /dev/null 2>&1"};
-    //std::cout << s << std::endl;
-    int res = std::system(s.c_str());
-    //std::cout << " res = " << res << std::endl;
-    int count{0};
-    while (res != 0 && count > 3) {
-        res = std::system(s.c_str());
-        count++;
+//Ping::Ping(std::vector<Host> vector_hosts, Telegram& telegram) : _vec_all_hosts(std::move(vector_hosts)) {}
+
+Ping::Ping(std::vector<Host> vector_hosts) : _vec_all_hosts(std::move(vector_hosts)), _first_run{true} {
+
+    sort(_vec_all_hosts);
+    _vec_last_state_hosts = _vec_all_hosts;
+    std::thread th([&]() {
+        tel.start();
+
+    });
+    std::thread th1([&]() {
+        check_telegram();
+    });
+    th.detach();
+    th1.detach();
+}
+
+Host Ping::ping(const Host &host) {
+    Host h(host.desc, host.ip);
+    std::string s{"ping -c1 -s1 " + host.ip + " > /dev/null 2>&1"};
+    try {
+        int res = std::system(s.c_str());
+        int count{0};
+        while (res != 0 && count < 3) {
+            count++;
+            res = std::system(s.c_str());
+        }
+        if (res == 0) h.isAvailable = true;
+        else h.isAvailable = false;
     }
-    std::vector<std::string> vector{};
-
-    vector.push_back(v.at(0));
-
-    vector.push_back(v.at(1));
-    vector.emplace_back(res == 0 ? "OK" : "NOT");
-    return vector;
+    catch (std::exception& ex){
+        std::cerr << "ERROR1 - " << ex.what();
+    }
+    return h;
 }
 
 void Ping::run() {
-    std::mutex mutex;
+    //std::mutex mutex;
     std::vector<std::thread *> th;
-    for (auto &i: _vec_input) {
+    _vec_hosts_result.clear();
+    for (auto &i: _vec_all_hosts) {
         th.push_back(new std::thread([&]() {
-            auto r = this->ping(i);
-            mutex.lock();
-            _vec_result.push_back(r);
-            mutex.unlock();
+            try {
+
+                auto r = this->ping(i);
+
+                _mut.lock();
+                _vec_hosts_result.push_back(r);
+                _mut.unlock();
+            }
+            catch (const std::exception& er){
+                std::cerr << "ERROR2 - " << er.what();
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+            }
         }));
     }
 
     for (auto i: th) {
         i->join();
     }
+    sort(_vec_hosts_result);
+    //-------------------------------------//
+
+    if (_first_run){
+        _vec_last_state_hosts = _vec_hosts_result;
+        _last_date_time = exec("date");
+        sendMessage(create_message_all_hosts(_vec_hosts_result));
+        _first_run = false;
+    }
+    if(check_changes()){
+        sendMessage(create_message_changes_hosts());
+    }
+
+    for (auto &i: th) delete i;
+    _vec_last_state_hosts = _vec_hosts_result;
+    _last_date_time = exec("date");
+
 }
 
 void Ping::print() {
-    std::sort(std::begin(_vec_result), std::end(_vec_result), [&](const std::vector<std::string>& a, const std::vector<std::string>& b){
-        in_addr addr1{};
-        in_addr addr2{};
-        inet_aton(a[1].c_str(), &addr1);
-        inet_aton(b[1].c_str(), &addr2);
 
+    for (const auto &i: _vec_hosts_result) {
+        if (i.isAvailable) continue;
+        std::cout << i.desc << " - " << i.ip << " - " << Color::RED << "NOT"
+                  << Color::DEF << std::endl;
 
-        return convert_Ip_to_Int(a[1]) < convert_Ip_to_Int(b[1]);
-    });
-
-    for (auto &i: _vec_result) {
-        //if(i.at(2) == "OK") continue;
-        std::cout << i.at(0) << " - " << i.at(1) << " - " << (i.at(2) == "OK" ? Color::GREEN : Color::RED)  << i.at(2) << Color::DEF <<  std::endl;
     }
-    /*for (auto &i: _vec_result) {
-        if(i.at(2) == "NOT") continue;
-        std::cout << i.at(0) << " - " << i.at(1) << " - " << (i.at(2) == "OK" ? Color::GREEN : Color::RED)  << i.at(2) << Color::DEF <<  std::endl;
-    }*/
+    for (const auto &i: _vec_hosts_result) {
+        if (!i.isAvailable) continue;
+        std::cout << i.desc << " - " << i.ip << " - " << Color::GREEN << "OK"
+                  << Color::DEF << std::endl;
+
+    }
 }
 
-unsigned int Ping::convert_Ip_to_Int(const std::string& s) {
-    std::string s_res;
-    std::istringstream ss{s};
-    std::stringstream ss1;
-    while (std::getline(ss, s_res, '.')){
-        ss1 << s_res;
-    }
-    return std::stoi(ss1.str());
+
+void Ping::sort(std::vector<Host> &vec) {
+
+    std::sort(vec.begin(), vec.end(), std::greater<>());
+
 }
+
+void Ping::sendMessage(const std::string &str) {
+    tel.send(str);
+}
+
+std::string Ping::create_message_all_hosts(const std::vector<Host> &h) {
+    std::stringstream ss;
+    _mut.lock();
+    for (const auto &i: h) {
+        ss << (i.isAvailable ? "✅" : "❌") << " - " << i.ip << " - " << i.desc << "\n";
+    }
+    _mut.unlock();
+    ss << '\n' << "last update:\n" << _last_date_time;
+
+    return ss.str();
+}
+
+void Ping::check_telegram() {
+    while (true) {
+        if (tel.is_get_all_hosts) {
+            sendMessage("command /all OK");
+            sendMessage(create_message_all_hosts(_vec_last_state_hosts));
+            tel.is_get_all_hosts = false;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+bool Ping::check_changes() {
+    if (_vec_hosts_result != _vec_last_state_hosts) return true;
+    return false;
+}
+
+std::string Ping::create_message_changes_hosts() {
+    std::stringstream ss;
+    _mut.lock();
+    if (_vec_last_state_hosts.size() != _vec_hosts_result.size()){
+        throw "ERROR 1";
+        exit(333);
+    }
+    for (int i = 0; i < _vec_hosts_result.size(); ++i) {
+        if (_vec_hosts_result.at(i) == _vec_last_state_hosts.at(i)) continue;
+        else {
+            ss << "state change:\n";
+            ss << (_vec_hosts_result.at(i).isAvailable ? "✅" : "❌") << " - " << _vec_hosts_result.at(i).ip << " - " << _vec_hosts_result.at(i).desc << "\n";
+        }
+    }
+    _mut.unlock();
+    return ss.str();
+}
+
+std::string Ping::exec(const std::string& command) {
+    char buffer[512];
+    std::string result;
+
+    // Open pipe to file
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) {
+        return "popen failed!";
+    }
+
+    // read till end of process:
+    while (!feof(pipe)) {
+
+        // use buffer to read and add to result
+        if (fgets(buffer, 512, pipe) != NULL)
+            result += buffer;
+    }
+
+    pclose(pipe);
+    return result;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,32 +1,54 @@
 #include <iostream>
+#include <chrono>
 #include "inc/Parser.h"
 #include "inc/Ping.h"
-#include <arpa/inet.h>
+#include "inc/Telegram.h"
+#include "inc/Host.h"
+#include <tgbot/tgbot.h>
 #include "inc/func.h"
 
 
 
+using namespace std;
 
 
 int main() {
 
-
-
-
-/*    in_addr a{};
-    inet_aton("10.10.10.10", &a);
-    a.s_addr;
-    std::vector<std::vector<std::string>> vec1;
-    for (int i = 1; i < 255; ++i) {
-        std::vector<std::string> v;
-        v.emplace_back("test");
-        v.push_back("10.10.10." + std::to_string(i));
-        vec1.push_back(std::move(v));
-    }*/
-    Ping p(Parser::getList());
-    //Ping p(vec1);
-
-    p.run();
-    p.print();
+    Ping p(Parser::getHosts());
+    int count{0};
+    while (true) {
+        try {
+            p.run();
+            system("clear");
+            p.print();
+            ++count;
+            std::cout << count << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+        catch (const std::exception& ex) {
+            std::cerr << "ERROR3 - " << ex.what();
+        }
+    }
 
 }
+
+
+
+
+/*    Ping p(Parser::getHosts());
+    int count{0};
+    while (true) {
+        p.run();
+        system("clear");
+        p.print();
+        ++count;
+        std::cout << count << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+
+}*/
+
+
+//string s = MyFunc::exec("ping 10.0.100.7 -c3");
+
+//std::cout << s;

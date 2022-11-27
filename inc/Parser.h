@@ -3,8 +3,9 @@
 #include <iostream>
 #include <tuple>
 #include <vector>
+#include "Host.h"
 class Parser {
 public:
-    static std::vector<std::vector<std::string>> getList();
+    static std::vector<Host> getHosts();
 
 };
